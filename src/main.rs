@@ -1,9 +1,14 @@
+use std::collections::HashSet;
+
 use bevy::{
     math::bounding::{Aabb2d, IntersectsVolume},
     prelude::*,
     window::PrimaryWindow,
 };
-use components::{Enemy, FromPlayer, Laser, Movable, SpriteSize, Velocity};
+use components::{
+    Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
+    Player, ScoreBoardUI, SpriteSize, Velocity,
+};
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
 
@@ -20,6 +25,8 @@ const ENEMY_SPRITE: &str = "enemy_a_01.png";
 const ENEMY_SIZE: (f32, f32) = (144., 75.);
 const ENEMY_LASER_SPRITE: &str = "laser_b_01.png";
 const ENEMY_LASER_SIZE: (f32, f32) = (17., 55.);
+
+const MAX_ENEMIES: u32 = 10;
 
 const EXPLOSION_SHEET: &str = "explo_a_sheet.png";
 const EXPLOSION_LEN: usize = 16;
@@ -43,9 +50,17 @@ struct GameTextures {
     explosion_texture: Handle<Image>,
 }
 
+#[derive(Resource, Deref, DerefMut)]
+struct Score(u32);
+
+#[derive(Resource)]
+struct EnemyCount(u32);
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.04, 0.04, 0.04)))
+        .insert_resource(Score(0))
+        .insert_resource(EnemyCount(0))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Rust Invaders!".into(),
@@ -59,6 +74,10 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, movement)
         .add_systems(Update, player_laser_hit_enemy)
+        .add_systems(Update, enemy_laser_hit_player)
+        .add_systems(Update, update_scoreboard)
+        // .add_systems(Update, explosion_spawn)
+        .add_systems(Update, explosion_animation)
         .run();
 }
 
@@ -69,6 +88,18 @@ fn setup(
     query: Query<&Window, With<PrimaryWindow>>,
 ) {
     commands.spawn(Camera2d);
+
+    commands.spawn((
+        Text::new("Score: "),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(5.0),
+            left: Val::Px(5.0),
+            ..default()
+        },
+        ScoreBoardUI,
+        children![(TextSpan::default(),)],
+    ));
 
     // capture window size
     let Ok(primary) = query.single() else {
@@ -95,6 +126,14 @@ fn setup(
     };
 
     commands.insert_resource(game_textures);
+}
+
+fn update_scoreboard(
+    score: Res<Score>,
+    score_root: Single<Entity, (With<ScoreBoardUI>, With<Text>)>,
+    mut writer: TextUiWriter,
+) {
+    *writer.text(*score_root, 1) = score.to_string();
 }
 
 fn movement(
@@ -124,13 +163,26 @@ fn movement(
 
 fn player_laser_hit_enemy(
     mut commands: Commands,
+    mut score: ResMut<Score>,
+    mut enemy_count: ResMut<EnemyCount>,
+    game_textures: Res<GameTextures>,
     laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromPlayer>)>,
     enemy_query: Query<(Entity, &Transform, &SpriteSize), With<Enemy>>,
 ) {
+    let mut despawned_entities: HashSet<Entity> = HashSet::new();
+
     for (laser_entity, laser_tf, laser_size) in &laser_query {
+        if despawned_entities.contains(&laser_entity) {
+            continue;
+        }
+
         let laser_scale = Vec2::from(laser_tf.scale.xy());
 
         for (enemy_entity, enemy_tf, enemy_size) in &enemy_query {
+            if despawned_entities.contains(&enemy_entity) {
+                continue;
+            }
+
             let enemy_scale = Vec2::from(enemy_tf.scale.xy());
 
             let collision = Aabb2d::new(
@@ -143,8 +195,122 @@ fn player_laser_hit_enemy(
             ));
 
             if collision {
+                despawned_entities.insert(enemy_entity);
+                despawned_entities.insert(laser_entity);
                 commands.entity(enemy_entity).despawn();
                 commands.entity(laser_entity).despawn();
+                // commands.spawn(ExplosionToSpawn(enemy_tf.translation));
+                commands.spawn((
+                    Sprite {
+                        image: game_textures.explosion_texture.clone(),
+                        texture_atlas: Some(TextureAtlas {
+                            layout: game_textures.explosion_layout.clone(),
+                            index: 0,
+                        }),
+                        ..Default::default()
+                    },
+                    Transform::from_translation(enemy_tf.translation),
+                    Explosion,
+                    ExplosionTimer::default(),
+                ));
+                **score += 1;
+                enemy_count.0 -= 1;
+            }
+        }
+    }
+}
+
+fn enemy_laser_hit_player(
+    mut commands: Commands,
+    game_textures: Res<GameTextures>,
+    laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromEnemy>)>,
+    player_query: Query<(Entity, &Transform, &SpriteSize), With<Player>>,
+) {
+    let mut despawned_entities: HashSet<Entity> = HashSet::new();
+
+    for (laser_entity, laser_tf, laser_size) in &laser_query {
+        if despawned_entities.contains(&laser_entity) {
+            continue;
+        }
+
+        let laser_scale = Vec2::from(laser_tf.scale.xy());
+
+        for (player_entity, player_tf, player_size) in &player_query {
+            if despawned_entities.contains(&player_entity) {
+                continue;
+            }
+
+            let player_scale = Vec2::from(player_tf.scale.xy());
+
+            let collision = Aabb2d::new(
+                laser_tf.translation.truncate(),
+                (laser_size.0 * laser_scale) / 2.0,
+            )
+            .intersects(&Aabb2d::new(
+                player_tf.translation.truncate(),
+                (player_size.0 * player_scale) / 2.0,
+            ));
+
+            if collision {
+                despawned_entities.insert(laser_entity);
+                despawned_entities.insert(player_entity);
+                commands.entity(laser_entity).despawn();
+                commands.entity(player_entity).despawn();
+                commands.spawn((
+                    Sprite {
+                        image: game_textures.explosion_texture.clone(),
+                        texture_atlas: Some(TextureAtlas {
+                            layout: game_textures.explosion_layout.clone(),
+                            index: 0,
+                        }),
+                        ..Default::default()
+                    },
+                    Transform::from_translation(player_tf.translation),
+                    Explosion,
+                    ExplosionTimer::default(),
+                ));
+                break;
+            }
+        }
+    }
+}
+
+fn explosion_spawn(
+    mut commands: Commands,
+    game_textures: Res<GameTextures>,
+    query: Query<(Entity, &ExplosionToSpawn)>,
+) {
+    for (entity, explosion_to_spawn) in &query {
+        commands.spawn((
+            Sprite {
+                image: game_textures.explosion_texture.clone(),
+                texture_atlas: Some(TextureAtlas {
+                    layout: game_textures.explosion_layout.clone(),
+                    index: 0,
+                }),
+                ..Default::default()
+            },
+            Transform::from_translation(explosion_to_spawn.0),
+            Explosion,
+            ExplosionTimer::default(),
+        ));
+        commands.entity(entity).despawn();
+    }
+}
+
+fn explosion_animation(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut ExplosionTimer, &mut Sprite), With<Explosion>>,
+) {
+    for (entity, mut timer, mut sprite) in &mut query {
+        timer.0.tick(time.delta());
+        if timer.0.finished() {
+            if let Some(texture) = sprite.texture_atlas.as_mut() {
+                texture.index += 1;
+                if texture.index >= EXPLOSION_LEN {
+                    commands.entity(entity).despawn();
+                }
             }
         }
     }

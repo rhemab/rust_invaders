@@ -1,4 +1,11 @@
-use bevy::{math::Vec2, prelude::Component};
+use bevy::{
+    math::{Vec2, Vec3},
+    prelude::Component,
+    time::{Timer, TimerMode},
+};
+
+#[derive(Component)]
+pub struct ScoreBoardUI;
 
 #[derive(Component)]
 pub struct Velocity {
@@ -32,4 +39,19 @@ pub struct Laser;
 #[derive(Component)]
 pub struct Movable {
     pub auto_despawn: bool,
+}
+
+#[derive(Component)]
+pub struct Explosion;
+
+#[derive(Component)]
+pub struct ExplosionToSpawn(pub Vec3);
+
+#[derive(Component)]
+pub struct ExplosionTimer(pub Timer);
+
+impl Default for ExplosionTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(0.05, TimerMode::Repeating))
+    }
 }

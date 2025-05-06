@@ -35,9 +35,9 @@ fn player_spawn(mut commands: Commands, game_textures: Res<GameTextures>, win_si
 
 fn player_input(input: Res<ButtonInput<KeyCode>>, mut query: Query<&mut Velocity, With<Player>>) {
     if let Ok(mut velocity) = query.single_mut() {
-        velocity.x = if input.pressed(KeyCode::ArrowLeft) {
+        velocity.x = if input.pressed(KeyCode::KeyA) {
             -1.0
-        } else if input.pressed(KeyCode::ArrowRight) {
+        } else if input.pressed(KeyCode::KeyD) {
             1.0
         } else {
             0.0
@@ -52,7 +52,7 @@ fn player_fire(
     query: Query<&Transform, With<Player>>,
 ) {
     if let Ok(player_tf) = query.single() {
-        if input.just_pressed(KeyCode::Space) {
+        if input.just_pressed(KeyCode::ArrowUp) {
             let (x, y) = (player_tf.translation.x, player_tf.translation.y);
             let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
 
