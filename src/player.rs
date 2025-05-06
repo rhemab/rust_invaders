@@ -1,14 +1,14 @@
 use bevy::prelude::*;
 
 use crate::{
-    GameTextures, PLAYER_LASER_SIZE, PLAYER_SIZE, SPRITE_SCALE, WinSize,
+    GameState, GameTextures, PLAYER_LASER_SIZE, PLAYER_SIZE, SPRITE_SCALE, WinSize,
     components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity},
 };
 
 pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, player_spawn)
+        app.add_systems(OnEnter(GameState::MainMenu), player_spawn)
             .add_systems(Update, player_input)
             .add_systems(Update, player_fire);
     }

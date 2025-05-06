@@ -1,8 +1,11 @@
 use bevy::{
-    math::{Vec2, Vec3},
+    math::Vec2,
     prelude::Component,
     time::{Timer, TimerMode},
 };
+
+#[derive(Component)]
+pub struct MainMenu;
 
 #[derive(Component)]
 pub struct ScoreBoardUI;
@@ -43,9 +46,6 @@ pub struct Movable {
 
 #[derive(Component)]
 pub struct Explosion;
-
-#[derive(Component)]
-pub struct ExplosionToSpawn(pub Vec3);
 
 #[derive(Component)]
 pub struct ExplosionTimer(pub Timer);

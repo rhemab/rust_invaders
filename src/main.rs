@@ -6,8 +6,8 @@ use bevy::{
     window::PrimaryWindow,
 };
 use components::{
-    Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
-    Player, ScoreBoardUI, SpriteSize, Velocity,
+    Enemy, Explosion, ExplosionTimer, FromEnemy, FromPlayer, Laser, MainMenu, Movable, Player,
+    ScoreBoardUI, SpriteSize, Velocity,
 };
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
@@ -33,6 +33,15 @@ const EXPLOSION_LEN: usize = 16;
 
 const SPRITE_SCALE: f32 = 0.5;
 const BASE_SPEED: f32 = 600.0;
+
+#[derive(States, Clone, Eq, PartialEq, Debug, Hash, Default)]
+enum GameState {
+    #[default]
+    Startup,
+    MainMenu,
+    Playing,
+    GameOver,
+}
 
 #[derive(Resource)]
 pub struct WinSize {
@@ -72,12 +81,20 @@ fn main() {
         .add_plugins(PlayerPlugin)
         .add_plugins(EnemyPlugin)
         .add_systems(Startup, setup)
+        .add_systems(Update, game_over.run_if(in_state(GameState::GameOver)))
+        .add_systems(Update, start_game.run_if(in_state(GameState::MainMenu)))
         .add_systems(Update, movement)
-        .add_systems(Update, player_laser_hit_enemy)
-        .add_systems(Update, enemy_laser_hit_player)
+        .add_systems(
+            Update,
+            player_laser_hit_enemy.run_if(in_state(GameState::Playing)),
+        )
+        .add_systems(
+            Update,
+            enemy_laser_hit_player.run_if(in_state(GameState::Playing)),
+        )
         .add_systems(Update, update_scoreboard)
-        // .add_systems(Update, explosion_spawn)
         .add_systems(Update, explosion_animation)
+        .init_state::<GameState>()
         .run();
 }
 
@@ -86,8 +103,20 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
     query: Query<&Window, With<PrimaryWindow>>,
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
     commands.spawn(Camera2d);
+
+    commands.spawn((
+        Text::new("Start Game [enter]\n\n\n a & d to move\n up-arrow to shoot"),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(350.0),
+            left: Val::Px(300.0),
+            ..default()
+        },
+        MainMenu,
+    ));
 
     commands.spawn((
         Text::new("Score: "),
@@ -126,6 +155,43 @@ fn setup(
     };
 
     commands.insert_resource(game_textures);
+    next_state.set(GameState::MainMenu);
+}
+
+fn start_game(
+    mut commands: Commands,
+    input: Res<ButtonInput<KeyCode>>,
+    main_menu_query: Query<Entity, With<MainMenu>>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut score: ResMut<Score>,
+) {
+    if input.pressed(KeyCode::Enter) {
+        for entity in &main_menu_query {
+            commands.entity(entity).despawn();
+        }
+        **score = 0;
+        next_state.set(GameState::Playing);
+    }
+}
+
+fn game_over(
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<GameState>>,
+    explosion_query: Query<(), With<Explosion>>,
+) {
+    if explosion_query.iter().len() == 0 {
+        commands.spawn((
+            Text::new("You Died!\nGame Over\n\nrestart [enter]"),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(350.0),
+                left: Val::Px(350.0),
+                ..default()
+            },
+            MainMenu,
+        ));
+        next_state.set(GameState::MainMenu);
+    }
 }
 
 fn update_scoreboard(
@@ -179,7 +245,9 @@ fn player_laser_hit_enemy(
         let laser_scale = Vec2::from(laser_tf.scale.xy());
 
         for (enemy_entity, enemy_tf, enemy_size) in &enemy_query {
-            if despawned_entities.contains(&enemy_entity) {
+            if despawned_entities.contains(&enemy_entity)
+                || despawned_entities.contains(&laser_entity)
+            {
                 continue;
             }
 
@@ -225,6 +293,7 @@ fn enemy_laser_hit_player(
     game_textures: Res<GameTextures>,
     laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromEnemy>)>,
     player_query: Query<(Entity, &Transform, &SpriteSize), With<Player>>,
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
     let mut despawned_entities: HashSet<Entity> = HashSet::new();
 
@@ -269,32 +338,10 @@ fn enemy_laser_hit_player(
                     Explosion,
                     ExplosionTimer::default(),
                 ));
+                next_state.set(GameState::GameOver);
                 break;
             }
         }
-    }
-}
-
-fn explosion_spawn(
-    mut commands: Commands,
-    game_textures: Res<GameTextures>,
-    query: Query<(Entity, &ExplosionToSpawn)>,
-) {
-    for (entity, explosion_to_spawn) in &query {
-        commands.spawn((
-            Sprite {
-                image: game_textures.explosion_texture.clone(),
-                texture_atlas: Some(TextureAtlas {
-                    layout: game_textures.explosion_layout.clone(),
-                    index: 0,
-                }),
-                ..Default::default()
-            },
-            Transform::from_translation(explosion_to_spawn.0),
-            Explosion,
-            ExplosionTimer::default(),
-        ));
-        commands.entity(entity).despawn();
     }
 }
 
