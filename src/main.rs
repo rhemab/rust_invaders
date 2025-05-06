@@ -26,8 +26,6 @@ const ENEMY_SIZE: (f32, f32) = (144., 75.);
 const ENEMY_LASER_SPRITE: &str = "laser_b_01.png";
 const ENEMY_LASER_SIZE: (f32, f32) = (17., 55.);
 
-const MAX_ENEMIES: u32 = 10;
-
 const EXPLOSION_SHEET: &str = "explo_a_sheet.png";
 const EXPLOSION_LEN: usize = 16;
 
@@ -62,14 +60,18 @@ struct GameTextures {
 #[derive(Resource, Deref, DerefMut)]
 struct Score(u32);
 
-#[derive(Resource)]
+#[derive(Resource, Deref, DerefMut)]
 struct EnemyCount(u32);
+
+#[derive(Resource, Deref, DerefMut)]
+struct MaxEnemies(u32);
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.04, 0.04, 0.04)))
         .insert_resource(Score(0))
         .insert_resource(EnemyCount(0))
+        .insert_resource(MaxEnemies(3))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Rust Invaders!".into(),
@@ -92,7 +94,10 @@ fn main() {
             Update,
             enemy_laser_hit_player.run_if(in_state(GameState::Playing)),
         )
-        .add_systems(Update, update_scoreboard)
+        .add_systems(
+            Update,
+            update_scoreboard.run_if(in_state(GameState::Playing)),
+        )
         .add_systems(Update, explosion_animation)
         .init_state::<GameState>()
         .run();
@@ -108,7 +113,7 @@ fn setup(
     commands.spawn(Camera2d);
 
     commands.spawn((
-        Text::new("Start Game [enter]\n\n\n a & d to move\n up-arrow to shoot"),
+        Text::new("New Game [enter]\n\n\nmove: [a] & [d]\nshoot: [up-arrow]"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(350.0),
@@ -177,8 +182,16 @@ fn start_game(
 fn game_over(
     mut commands: Commands,
     mut next_state: ResMut<NextState<GameState>>,
+    mut max_enemies: ResMut<MaxEnemies>,
+    mut enemy_count: ResMut<EnemyCount>,
     explosion_query: Query<(), With<Explosion>>,
+    enemy_query: Query<Entity, With<Enemy>>,
 ) {
+    **max_enemies = 3;
+    for entity in &enemy_query {
+        commands.entity(entity).despawn();
+        **enemy_count -= 1;
+    }
     if explosion_query.iter().len() == 0 {
         commands.spawn((
             Text::new("You Died!\nGame Over\n\nrestart [enter]"),
@@ -196,16 +209,23 @@ fn game_over(
 
 fn update_scoreboard(
     score: Res<Score>,
+    mut max_enemies: ResMut<MaxEnemies>,
     score_root: Single<Entity, (With<ScoreBoardUI>, With<Text>)>,
     mut writer: TextUiWriter,
 ) {
     *writer.text(*score_root, 1) = score.to_string();
+
+    if **score > 5 {
+        **max_enemies = 10;
+    }
 }
 
 fn movement(
     mut commands: Commands,
     win_size: Res<WinSize>,
+    mut enemy_count: ResMut<EnemyCount>,
     mut query: Query<(Entity, &Velocity, &mut Transform, &Movable)>,
+    enemy_query: Query<&Enemy>,
     time: Res<Time>,
 ) {
     for (entity, velocity, mut transform, movable) in query.iter_mut() {
@@ -221,6 +241,9 @@ fn movement(
                 || translation.x > win_size.w / 2. + margin
                 || translation.x < -win_size.w / 2. - margin
             {
+                if enemy_query.get(entity).is_ok() {
+                    **enemy_count -= 1;
+                }
                 commands.entity(entity).despawn();
             }
         }

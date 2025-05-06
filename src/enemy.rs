@@ -4,7 +4,7 @@ use bevy::{prelude::*, time::common_conditions::on_timer};
 use rand::Rng;
 
 use crate::{
-    ENEMY_LASER_SIZE, ENEMY_SIZE, EnemyCount, GameTextures, MAX_ENEMIES, SPRITE_SCALE, WinSize,
+    ENEMY_LASER_SIZE, ENEMY_SIZE, EnemyCount, GameTextures, MaxEnemies, SPRITE_SCALE, WinSize,
     components::{Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity},
 };
 
@@ -26,10 +26,11 @@ impl Plugin for EnemyPlugin {
 fn enemy_spawn(
     mut commands: Commands,
     mut enemy_count: ResMut<EnemyCount>,
+    max_enemies: Res<MaxEnemies>,
     game_textures: Res<GameTextures>,
     win_size: Res<WinSize>,
 ) {
-    if enemy_count.0 < MAX_ENEMIES {
+    if **enemy_count < **max_enemies {
         let mut rng = rand::rng();
         let w_span = win_size.w / 2.0 - 100.0;
         let h_span = win_size.h / 2.0 - 100.0;
@@ -46,11 +47,9 @@ fn enemy_spawn(
             ))
             .insert(SpriteSize::from(ENEMY_SIZE))
             .insert(Velocity { x: 0.0, y: 0.0 })
-            .insert(Movable {
-                auto_despawn: false,
-            })
+            .insert(Movable { auto_despawn: true })
             .insert(Enemy);
-        enemy_count.0 += 1;
+        **enemy_count += 1;
     }
 }
 
@@ -63,7 +62,7 @@ fn enemy_fire(
         let (x, y) = (enemy_tf.translation.x, enemy_tf.translation.y);
         let x_offset = ENEMY_SIZE.0 / 2. * SPRITE_SCALE - 25.;
 
-        let mut spawn_lazer = |x_offset: f32| {
+        let mut spawn_laser = |x_offset: f32| {
             commands
                 .spawn((
                     Sprite::from_image(game_textures.enemy_laser.clone()),
@@ -80,45 +79,32 @@ fn enemy_fire(
                 .insert(Velocity { x: 0.0, y: -1.0 });
         };
 
-        spawn_lazer(x_offset);
-        spawn_lazer(-x_offset);
+        spawn_laser(x_offset);
+        spawn_laser(-x_offset);
     }
 }
 
-fn enemy_move(
-    mut commands: Commands,
-    win_size: Res<WinSize>,
-    mut enemy_count: ResMut<EnemyCount>,
-    mut query: Query<(Entity, &mut Velocity, &Transform), With<Enemy>>,
-) {
-    for (entity, mut velocity, transform) in &mut query {
+fn enemy_move(win_size: Res<WinSize>, mut query: Query<(&mut Velocity, &Transform), With<Enemy>>) {
+    for (mut velocity, transform) in &mut query {
         let mut rng = rand::rng();
-        let x = rng.random_range(-0.05..=0.05);
-        let y = rng.random_range(-0.05..=0.05);
+        let x = rng.random_range(-0.02..=0.02);
+        let y = rng.random_range(-0.02..=0.02);
+
         velocity.x += x;
         velocity.y += y;
 
         let translation = transform.translation;
-        let margin = 200.0;
-        // if translation.x < -win_size.w / 2. {
-        //     velocity.x += 1.0;
-        // }
-        // if translation.x > win_size.w / 2. {
-        //     velocity.x += -1.0;
-        // }
-        // if translation.y < -win_size.h / 2. {
-        //     velocity.y += 1.0;
-        // }
-        // if translation.y > win_size.h / 2.0 {
-        //     velocity.y += -1.0;
-        // }
-        if translation.y > win_size.h / 2. + margin
-            || translation.y < -win_size.h / 2. - margin
-            || translation.x > win_size.w / 2. + margin
-            || translation.x < -win_size.w / 2. - margin
-        {
-            commands.entity(entity).despawn();
-            enemy_count.0 -= 1;
+        if translation.x < -win_size.w / 2. - 50. {
+            velocity.x = 0.3;
+        }
+        if translation.x > win_size.w / 2. + 50. {
+            velocity.x = -0.3;
+        }
+        if translation.y < -win_size.h / 2. + 200. {
+            velocity.y = 0.3;
+        }
+        if translation.y > win_size.h / 2. + 50. {
+            velocity.y = -0.3;
         }
     }
 }
