@@ -34,15 +34,31 @@ fn player_spawn(mut commands: Commands, game_textures: Res<GameTextures>, win_si
         .insert(Velocity { x: 0.0, y: 0.0 });
 }
 
-fn player_input(input: Res<ButtonInput<KeyCode>>, mut query: Query<&mut Velocity, With<Player>>) {
-    if let Ok(mut velocity) = query.single_mut() {
-        velocity.x = if input.pressed(KeyCode::KeyA) {
+fn player_input(
+    input: Res<ButtonInput<KeyCode>>,
+    win_size: Res<WinSize>,
+    mut query: Query<(&mut Velocity, &Transform), With<Player>>,
+) {
+    if let Ok((mut velocity, transform)) = query.single_mut() {
+        let x = if input.pressed(KeyCode::KeyA) {
             -1.0
         } else if input.pressed(KeyCode::KeyD) {
             1.0
         } else {
             0.0
+        };
+
+        let translation = transform.translation;
+        if translation.x < -win_size.w / 2. + PLAYER_SIZE.1 / 2. && x < 0.0 {
+            velocity.x = 0.0;
+            return;
         }
+        if translation.x > win_size.w / 2. - PLAYER_SIZE.1 / 2. && x > 0.0 {
+            velocity.x = 0.0;
+            return;
+        }
+
+        velocity.x = x;
     }
 }
 
