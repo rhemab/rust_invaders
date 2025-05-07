@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 use crate::{
-    GameState, GameTextures, PLAYER_LASER_SIZE, PLAYER_SIZE, SPRITE_SCALE, WinSize,
+    GameState, GameTextures, PLAYER_LASER_SIZE, PLAYER_MAX_LASERS, PLAYER_SIZE, SPRITE_SCALE,
+    WinSize,
     components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity},
 };
 
@@ -50,9 +51,12 @@ fn player_fire(
     input: Res<ButtonInput<KeyCode>>,
     game_textures: Res<GameTextures>,
     query: Query<&Transform, With<Player>>,
+    player_laser_query: Query<(), (With<Laser>, With<FromPlayer>)>,
 ) {
     if let Ok(player_tf) = query.single() {
-        if input.just_pressed(KeyCode::ArrowUp) {
+        if input.just_pressed(KeyCode::ArrowUp)
+            && player_laser_query.iter().len() < PLAYER_MAX_LASERS
+        {
             let (x, y) = (player_tf.translation.x, player_tf.translation.y);
             let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
 

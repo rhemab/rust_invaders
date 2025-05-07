@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use std::collections::HashSet;
 
 use bevy::{
@@ -20,6 +22,7 @@ const PLAYER_SPRITE: &str = "player_a_01.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
 const PLAYER_LASER_SPRITE: &str = "laser_a_01.png";
 const PLAYER_LASER_SIZE: (f32, f32) = (9., 54.);
+const PLAYER_MAX_LASERS: usize = 10;
 
 const ENEMY_SPRITE: &str = "enemy_a_01.png";
 const ENEMY_SIZE: (f32, f32) = (144., 75.);
