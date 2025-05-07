@@ -1,4 +1,5 @@
 /target
 .DS_Store
-/webbuild
-/windows_build
+*.zip
+data.txt
+/rust_invaders_windows_x86

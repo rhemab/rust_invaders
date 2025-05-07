@@ -1,6 +1,6 @@
 #![windows_subsystem = "windows"]
 
-use std::collections::HashSet;
+use std::{collections::HashSet, fs};
 
 use bevy::{
     math::bounding::{Aabb2d, IntersectsVolume},
@@ -17,6 +17,8 @@ use player::PlayerPlugin;
 mod components;
 mod enemy;
 mod player;
+
+const HIGH_SCORE_FILE: &str = "data.txt";
 
 const PLAYER_SPRITE: &str = "player_a_01.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
@@ -64,14 +66,23 @@ struct GameTextures {
 struct Score(u32);
 
 #[derive(Resource, Deref, DerefMut)]
+struct HighScore(u32);
+
+#[derive(Resource, Deref, DerefMut)]
 struct EnemyCount(u32);
 
 #[derive(Resource, Deref, DerefMut)]
 struct MaxEnemies(u32);
 
 fn main() {
+    let high_score: u32 = fs::read_to_string(HIGH_SCORE_FILE)
+        .unwrap_or_default()
+        .parse()
+        .unwrap_or_default();
+
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.04, 0.04, 0.04)))
+        .insert_resource(HighScore(high_score))
         .insert_resource(Score(0))
         .insert_resource(EnemyCount(0))
         .insert_resource(MaxEnemies(3))
@@ -112,11 +123,15 @@ fn setup(
     mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
     query: Query<&Window, With<PrimaryWindow>>,
     mut next_state: ResMut<NextState<GameState>>,
+    high_score: Res<HighScore>,
 ) {
     commands.spawn(Camera2d);
 
     commands.spawn((
-        Text::new("New Game [enter]\n\n\nmove: [a] & [d]\nshoot: [up-arrow]"),
+        Text::new(format!(
+            "New Game [enter]\n\n\nmove: [a] & [d]\nshoot: [up-arrow]\n\n\nHigh Score: {}",
+            **high_score
+        )),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(350.0),
@@ -189,15 +204,29 @@ fn game_over(
     mut enemy_count: ResMut<EnemyCount>,
     explosion_query: Query<(), With<Explosion>>,
     enemy_query: Query<Entity, With<Enemy>>,
+    score: Res<Score>,
+    mut high_score: ResMut<HighScore>,
 ) {
+    // reset enemies
     **max_enemies = 3;
     for entity in &enemy_query {
         commands.entity(entity).despawn();
         **enemy_count -= 1;
     }
+
+    // wait for explosions to finish
     if explosion_query.iter().len() == 0 {
+        // check for new high score
+        if **score > **high_score {
+            **high_score = **score;
+            let _ = fs::write(HIGH_SCORE_FILE, format!("{}", **high_score));
+        }
+
         commands.spawn((
-            Text::new("You Died!\nGame Over\n\nrestart [enter]"),
+            Text::new(format!(
+                "You Died!\nGame Over\n\nrestart [enter]\n\n\nHigh Score: {}",
+                **high_score
+            )),
             Node {
                 position_type: PositionType::Absolute,
                 top: Val::Px(350.0),
