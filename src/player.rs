@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
 use crate::{
-    GameState, GameTextures, PLAYER_LASER_SIZE, PLAYER_MAX_LASERS, PLAYER_SIZE, SPRITE_SCALE,
-    WinSize,
+    GameState, GameTextures, LaserVelocityUpgrage, PLAYER_LASER_SIZE, PLAYER_MAX_LASERS,
+    PLAYER_SIZE, SPRITE_SCALE, WinSize,
     components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity},
 };
 
@@ -66,6 +66,7 @@ fn player_fire(
     mut commands: Commands,
     input: Res<ButtonInput<KeyCode>>,
     game_textures: Res<GameTextures>,
+    laser_velocity_upgrade: Res<LaserVelocityUpgrage>,
     query: Query<&Transform, With<Player>>,
     player_laser_query: Query<(), (With<Laser>, With<FromPlayer>)>,
 ) {
@@ -75,8 +76,9 @@ fn player_fire(
         {
             let (x, y) = (player_tf.translation.x, player_tf.translation.y);
             let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
+            let laser_velocity = if **laser_velocity_upgrade { 2.0 } else { 1.0 };
 
-            let mut spawn_lazer = |x_offset: f32| {
+            let mut spawn_lazer = |x_offset: f32, laser_velocity: f32| {
                 commands
                     .spawn((
                         Sprite::from_image(game_textures.player_laser.clone()),
@@ -90,11 +92,14 @@ fn player_fire(
                     .insert(FromPlayer)
                     .insert(SpriteSize::from(PLAYER_LASER_SIZE))
                     .insert(Movable { auto_despawn: true })
-                    .insert(Velocity { x: 0.0, y: 1.0 });
+                    .insert(Velocity {
+                        x: 0.0,
+                        y: laser_velocity,
+                    });
             };
 
-            spawn_lazer(x_offset);
-            spawn_lazer(-x_offset);
+            spawn_lazer(x_offset, laser_velocity);
+            spawn_lazer(-x_offset, laser_velocity);
         }
     }
 }

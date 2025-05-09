@@ -37,6 +37,8 @@ const EXPLOSION_LEN: usize = 16;
 const SPRITE_SCALE: f32 = 0.5;
 const BASE_SPEED: f32 = 600.0;
 
+const LASER_UPGRADE_SCORE: u32 = 50;
+
 #[derive(States, Clone, Eq, PartialEq, Debug, Hash, Default)]
 enum GameState {
     #[default]
@@ -74,6 +76,9 @@ struct EnemyCount(u32);
 #[derive(Resource, Deref, DerefMut)]
 struct MaxEnemies(u32);
 
+#[derive(Resource, Deref, DerefMut)]
+struct LaserVelocityUpgrage(bool);
+
 fn main() {
     let high_score: u32 = fs::read_to_string(HIGH_SCORE_FILE)
         .unwrap_or_default()
@@ -86,6 +91,7 @@ fn main() {
         .insert_resource(Score(0))
         .insert_resource(EnemyCount(0))
         .insert_resource(MaxEnemies(3))
+        .insert_resource(LaserVelocityUpgrage(false))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Rust Invaders!".into(),
@@ -164,9 +170,10 @@ fn setup(
     commands.insert_resource(win_size);
 
     // create explosion texture atlas
-    let texture_handle = asset_server.load(EXPLOSION_SHEET);
-    let texture_atlas = TextureAtlasLayout::from_grid(UVec2::new(64, 64), 4, 4, None, None);
-    let explosion_layout = texture_atlases.add(texture_atlas);
+    let explosion_texture_handle = asset_server.load(EXPLOSION_SHEET);
+    let explosion_texture_atlas =
+        TextureAtlasLayout::from_grid(UVec2::new(64, 64), 4, 4, None, None);
+    let explosion_layout = texture_atlases.add(explosion_texture_atlas);
 
     let game_textures = GameTextures {
         player: asset_server.load(PLAYER_SPRITE),
@@ -174,7 +181,7 @@ fn setup(
         enemy: asset_server.load(ENEMY_SPRITE),
         enemy_laser: asset_server.load(ENEMY_LASER_SPRITE),
         explosion_layout,
-        explosion_texture: texture_handle,
+        explosion_texture: explosion_texture_handle,
     };
 
     commands.insert_resource(game_textures);
@@ -241,14 +248,18 @@ fn game_over(
 
 fn update_scoreboard(
     score: Res<Score>,
+    mut laser_velocity_upgrade: ResMut<LaserVelocityUpgrage>,
     mut max_enemies: ResMut<MaxEnemies>,
     score_root: Single<Entity, (With<ScoreBoardUI>, With<Text>)>,
     mut writer: TextUiWriter,
 ) {
     *writer.text(*score_root, 1) = score.to_string();
 
-    if **score > 5 {
+    if **score == 5 {
         **max_enemies = 10;
+    }
+    if **score == LASER_UPGRADE_SCORE {
+        **laser_velocity_upgrade = true;
     }
 }
 
@@ -322,7 +333,6 @@ fn player_laser_hit_enemy(
                 despawned_entities.insert(laser_entity);
                 commands.entity(enemy_entity).despawn();
                 commands.entity(laser_entity).despawn();
-                // commands.spawn(ExplosionToSpawn(enemy_tf.translation));
                 commands.spawn((
                     Sprite {
                         image: game_textures.explosion_texture.clone(),
