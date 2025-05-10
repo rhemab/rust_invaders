@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
 use crate::{
-    GameState, GameTextures, LaserVelocityUpgrage, PLAYER_LASER_SIZE, PLAYER_MAX_LASERS,
-    PLAYER_SIZE, SPRITE_SCALE, WinSize,
+    GameState, GameTextures, LaserUpgrage, PLAYER_LASER_SIZE, PLAYER_MAX_LASERS, PLAYER_SIZE,
+    SPRITE_SCALE, WinSize,
     components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity},
 };
 
@@ -66,7 +66,7 @@ fn player_fire(
     mut commands: Commands,
     input: Res<ButtonInput<KeyCode>>,
     game_textures: Res<GameTextures>,
-    laser_velocity_upgrade: Res<LaserVelocityUpgrage>,
+    laser_velocity_upgrade: Res<LaserUpgrage>,
     query: Query<&Transform, With<Player>>,
     player_laser_query: Query<(), (With<Laser>, With<FromPlayer>)>,
 ) {
@@ -77,29 +77,35 @@ fn player_fire(
             let (x, y) = (player_tf.translation.x, player_tf.translation.y);
             let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
             let laser_velocity = if **laser_velocity_upgrade { 2.0 } else { 1.0 };
-
-            let mut spawn_lazer = |x_offset: f32, laser_velocity: f32| {
-                commands
-                    .spawn((
-                        Sprite::from_image(game_textures.player_laser.clone()),
-                        Transform {
-                            translation: Vec3::new(x + x_offset, y + 15., 1.0),
-                            scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.0),
-                            ..Default::default()
-                        },
-                    ))
-                    .insert(Laser)
-                    .insert(FromPlayer)
-                    .insert(SpriteSize::from(PLAYER_LASER_SIZE))
-                    .insert(Movable { auto_despawn: true })
-                    .insert(Velocity {
-                        x: 0.0,
-                        y: laser_velocity,
-                    });
+            let laser_sprite = if **laser_velocity_upgrade {
+                game_textures.player_laser_upgrade.clone()
+            } else {
+                game_textures.player_laser.clone()
             };
 
-            spawn_lazer(x_offset, laser_velocity);
-            spawn_lazer(-x_offset, laser_velocity);
+            let mut spawn_lazer =
+                |x_offset: f32, laser_velocity: f32, laser_sprite: Handle<Image>| {
+                    commands
+                        .spawn((
+                            Sprite::from_image(laser_sprite),
+                            Transform {
+                                translation: Vec3::new(x + x_offset, y + 15., 1.0),
+                                scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.0),
+                                ..Default::default()
+                            },
+                        ))
+                        .insert(Laser)
+                        .insert(FromPlayer)
+                        .insert(SpriteSize::from(PLAYER_LASER_SIZE))
+                        .insert(Movable { auto_despawn: true })
+                        .insert(Velocity {
+                            x: 0.0,
+                            y: laser_velocity,
+                        });
+                };
+
+            spawn_lazer(x_offset, laser_velocity, laser_sprite.clone());
+            spawn_lazer(-x_offset, laser_velocity, laser_sprite.clone());
         }
     }
 }

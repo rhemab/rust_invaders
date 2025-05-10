@@ -1,6 +1,6 @@
 #![windows_subsystem = "windows"]
 
-use std::{collections::HashSet, fs};
+use std::{collections::HashSet, fs, io, path::PathBuf};
 
 use bevy::{
     math::bounding::{Aabb2d, IntersectsVolume},
@@ -11,6 +11,7 @@ use components::{
     Enemy, Explosion, ExplosionTimer, FromEnemy, FromPlayer, Laser, MainMenu, Movable, Player,
     ScoreBoardUI, SpriteSize, Velocity,
 };
+use directories::ProjectDirs;
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
 
@@ -18,11 +19,10 @@ mod components;
 mod enemy;
 mod player;
 
-const HIGH_SCORE_FILE: &str = "data.txt";
-
 const PLAYER_SPRITE: &str = "player_a_01.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
 const PLAYER_LASER_SPRITE: &str = "laser_a_01.png";
+const PLAYER_LASER_UPGRADE: &str = "laser_green.png";
 const PLAYER_LASER_SIZE: (f32, f32) = (9., 54.);
 const PLAYER_MAX_LASERS: usize = 10;
 
@@ -58,6 +58,7 @@ pub struct WinSize {
 struct GameTextures {
     player: Handle<Image>,
     player_laser: Handle<Image>,
+    player_laser_upgrade: Handle<Image>,
     enemy: Handle<Image>,
     enemy_laser: Handle<Image>,
     explosion_layout: Handle<TextureAtlasLayout>,
@@ -77,10 +78,26 @@ struct EnemyCount(u32);
 struct MaxEnemies(u32);
 
 #[derive(Resource, Deref, DerefMut)]
-struct LaserVelocityUpgrage(bool);
+struct LaserUpgrage(bool);
+
+#[derive(Resource, Deref)]
+struct HighScorePath(PathBuf);
+
+fn get_high_score_path() -> io::Result<PathBuf> {
+    if let Some(proj_dirs) = ProjectDirs::from("com", "balestech", "rust_invaders") {
+        let data_dir = proj_dirs.data_local_dir();
+        fs::create_dir_all(data_dir)?;
+        return Ok(data_dir.join("high_score.txt"));
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "Could not determine data directory",
+    ))
+}
 
 fn main() {
-    let high_score: u32 = fs::read_to_string(HIGH_SCORE_FILE)
+    let high_score_path = get_high_score_path().unwrap_or_default();
+    let high_score: u32 = fs::read_to_string(&high_score_path)
         .unwrap_or_default()
         .parse()
         .unwrap_or_default();
@@ -91,7 +108,8 @@ fn main() {
         .insert_resource(Score(0))
         .insert_resource(EnemyCount(0))
         .insert_resource(MaxEnemies(3))
-        .insert_resource(LaserVelocityUpgrage(false))
+        .insert_resource(LaserUpgrage(false))
+        .insert_resource(HighScorePath(high_score_path))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Rust Invaders!".into(),
@@ -178,6 +196,7 @@ fn setup(
     let game_textures = GameTextures {
         player: asset_server.load(PLAYER_SPRITE),
         player_laser: asset_server.load(PLAYER_LASER_SPRITE),
+        player_laser_upgrade: asset_server.load(PLAYER_LASER_UPGRADE),
         enemy: asset_server.load(ENEMY_SPRITE),
         enemy_laser: asset_server.load(ENEMY_LASER_SPRITE),
         explosion_layout,
@@ -209,13 +228,16 @@ fn game_over(
     mut next_state: ResMut<NextState<GameState>>,
     mut max_enemies: ResMut<MaxEnemies>,
     mut enemy_count: ResMut<EnemyCount>,
+    mut laser_velocity_upgrade: ResMut<LaserUpgrage>,
     explosion_query: Query<(), With<Explosion>>,
     enemy_query: Query<Entity, With<Enemy>>,
     score: Res<Score>,
     mut high_score: ResMut<HighScore>,
+    high_score_path: Res<HighScorePath>,
 ) {
-    // reset enemies
+    // reset enemies & upgrades
     **max_enemies = 3;
+    **laser_velocity_upgrade = false;
     for entity in &enemy_query {
         commands.entity(entity).despawn();
         **enemy_count -= 1;
@@ -226,7 +248,7 @@ fn game_over(
         // check for new high score
         if **score > **high_score {
             **high_score = **score;
-            let _ = fs::write(HIGH_SCORE_FILE, format!("{}", **high_score));
+            let _ = fs::write(&**high_score_path, format!("{}", **high_score));
         }
 
         commands.spawn((
@@ -248,7 +270,7 @@ fn game_over(
 
 fn update_scoreboard(
     score: Res<Score>,
-    mut laser_velocity_upgrade: ResMut<LaserVelocityUpgrage>,
+    mut laser_velocity_upgrade: ResMut<LaserUpgrage>,
     mut max_enemies: ResMut<MaxEnemies>,
     score_root: Single<Entity, (With<ScoreBoardUI>, With<Text>)>,
     mut writer: TextUiWriter,
